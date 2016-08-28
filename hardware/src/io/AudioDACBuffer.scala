@@ -12,22 +12,22 @@ class AudioDACBUffer(AUDIOBITLENGTH: Int, BUFFERPOWER: Int) extends Module {
     // to/from PATMOS
     val audioLIPatmos = UInt(INPUT, AUDIOBITLENGTH)
     val audioRIPatmos = UInt(INPUT, AUDIOBITLENGTH)
-    val enDacI = Bool(dir = Input) // enable signal
+    val enDacI = UInt(INPUT, 1) // enable signal
     val reqI = UInt(INPUT, 1)  // handshake REQ
     val ackO = UInt(OUTPUT, 1) // handshake ACK
     // to/from AudioDAC
     val audioLIDAC = UInt(OUTPUT, AUDIOBITLENGTH)
     val audioRIDAC = UInt(OUTPUT, AUDIOBITLENGTH)
-    val enDacO = Bool(dir = Output) // enable signal
+    val enDacO = UInt(OUTPUT, 1) // enable signal
     val dacLrcI = UInt(INPUT, 1) // used to sync
     //val busyDac = UInt(INPUT, 1) //needed???
   }
 
-  Int BUFFERLENGTH = 2^(BUFFERPOWER);
+  val BUFFERLENGTH : Int = (Math.pow(2, BUFFERPOWER)).asInstanceOf[Int]
 
   //Registers for output audio data
-  audioLIReg = Reg(init = UInt(0, AUDIOBITLENGTH))
-  audioRIReg = Reg(init = UInt(0, AUDIOBITLENGTH))
+  val audioLIReg = Reg(init = UInt(0, AUDIOBITLENGTH))
+  val audioRIReg = Reg(init = UInt(0, AUDIOBITLENGTH))
   io.audioLIDAC := audioLIReg
   io.audioRIDAC := audioRIReg
 
@@ -51,7 +51,7 @@ class AudioDACBUffer(AUDIOBITLENGTH: Int, BUFFERPOWER: Int) extends Module {
   val stateIn = Reg(init = sInIdle)
 
   // full and empty state machine
-  val sFEIdle :: sFEAlmostFull :: SFEFull :: SFEAlmostEmpty :: SFEEmpty :: Nil = Enum(UInt(), 5)
+  val sFEIdle :: sFEAlmostFull :: sFEFull :: sFEAlmostEmpty :: sFEEmpty :: Nil = Enum(UInt(), 5)
   val stateFE = Reg(init = sFEIdle)
 
   // audio output handshake: if input enable and buffer not empty
@@ -161,7 +161,7 @@ class AudioDACBUffer(AUDIOBITLENGTH: Int, BUFFERPOWER: Int) extends Module {
       is(sFEFull) {
         fullReg  := UInt(1)
         emptyReg := UInt(0)
-        when( (r_inc === UInt(1)) && (w_inc == UInt(0)) ) {
+        when( (r_inc === UInt(1)) && (w_inc === UInt(0)) ) {
           stateFE := sFEAlmostFull
         }
       }
@@ -178,11 +178,10 @@ class AudioDACBUffer(AUDIOBITLENGTH: Int, BUFFERPOWER: Int) extends Module {
       is(sFEEmpty) {
         fullReg  := UInt(0)
         emptyReg := UInt(1)
-        when( (w_inc === UInt(1)) && (r_inc == UInt(0)) ) {
+        when( (w_inc === UInt(1)) && (r_inc === UInt(0)) ) {
           stateFE := sFEAlmostEmpty
         }
       }
     }
   }
-
 }
