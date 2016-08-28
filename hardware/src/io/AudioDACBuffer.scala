@@ -38,15 +38,21 @@ class AudioDACBUffer(AUDIOBITLENGTH: Int, BUFFERPOWER: Int) extends Module {
   val r_pnt = Reg(init = UInt(0, BUFFERPOWER))
   val fullReg  = Reg(init = UInt(0, 1))
   val emptyReg = Reg(init = UInt(1, 1)) // starts empty
+  val w_inc = Reg(init = UInt(0, 1)) // write pointer increment
+  val r_inc = Reg(init = UInt(0, 1)) // read pointer increment
 
 
-  // output handshake states
+  // output handshake state machine
   val sOutIdle :: sOutWrote :: Nil = Enum(UInt(), 2)
   val stateOut = Reg(init = sOutIdle)
 
-  // input handshake states
+  // input handshake state machine
   val sInIdle :: sInReqHi :: sInAckHi :: sInReqLo :: Nil = Enum(UInt(), 4)
   val stateIn = Reg(init = sInIdle)
+
+  // full and empty state machine
+  val sFEIdle :: sFEAlmostFull :: SFEFull :: SFEAlmostEmpty :: SFEEmpty :: Nil = Enum(UInt(), 5)
+  val stateFE = Reg(init = sFEIdle)
 
   // audio output handshake: if input enable and buffer not empty
   when ( (io.enDacI === UInt(1)) && (emptyReg === UInt(0)) ) {
@@ -61,6 +67,7 @@ class AudioDACBUffer(AUDIOBITLENGTH: Int, BUFFERPOWER: Int) extends Module {
           audioLIReg := audioBufferL(r_pnt)
           audioRIReg := audioBufferR(r_pnt)
           r_pnt := r_pnt + UInt(1)
+          r_inc := UInt(1)
           //update state
           stateOut := sOutWrote
         }
@@ -112,6 +119,7 @@ class AudioDACBUffer(AUDIOBITLENGTH: Int, BUFFERPOWER: Int) extends Module {
           audioBufferL(w_pnt) := io.audioLIPatmos
           audioBufferR(w_pnt) := io.audioRIPatmos
           w_pnt := w_pnt + UInt(1)
+          w_inc := UInt(1)
           //update state
           stateIn := sInIdle
         }
@@ -123,6 +131,58 @@ class AudioDACBUffer(AUDIOBITLENGTH: Int, BUFFERPOWER: Int) extends Module {
     io.ackO := UInt(0)
   }
 
-  //update full and empty states here
+  //update full and empty states
+  when ( (w_inc === UInt(1)) || (r_inc === UInt(1)) ) {
+    //default: set back variables
+    w_inc := UInt(0)
+    r_inc := UInt(0)
+    //state machine
+    switch (stateFE) {
+      is (sFEIdle) {
+        fullReg  := UInt(0)
+        emptyReg := UInt(0)
+        when( (w_inc === UInt(1)) && (w_pnt === (r_pnt - UInt(1))) && (r_inc === UInt(0)) ) {
+          stateFE := sFEAlmostFull
+        }
+        .elsewhen( (r_inc === UInt(1)) && (r_pnt === (w_pnt - UInt(1))) && (w_inc === UInt(0)) ) {
+          stateFE := sFEAlmostEmpty
+        }
+      }
+      is(sFEAlmostFull) {
+        fullReg  := UInt(0)
+        emptyReg := UInt(0)
+        when( (r_inc === UInt(1)) && (w_inc === UInt(0)) ) {
+          stateFE := sFEIdle
+        }
+        .elsewhen( (w_inc === UInt(1)) && (r_inc === UInt(0)) ) {
+          stateFE := sFEFull
+        }
+      }
+      is(sFEFull) {
+        fullReg  := UInt(1)
+        emptyReg := UInt(0)
+        when( (r_inc === UInt(1)) && (w_inc == UInt(0)) ) {
+          stateFE := sFEAlmostFull
+        }
+      }
+      is(sFEAlmostEmpty) {
+        fullReg  := UInt(0)
+        emptyReg := UInt(0)
+        when( (w_inc === UInt(1)) && (r_inc === UInt(0)) ) {
+          stateFE := sFEIdle
+        }
+        .elsewhen( (r_inc === UInt(1)) && (w_inc === UInt(0)) ) {
+          stateFE := sFEEmpty
+        }
+      }
+      is(sFEEmpty) {
+        fullReg  := UInt(0)
+        emptyReg := UInt(1)
+        when( (w_inc === UInt(1)) && (r_inc == UInt(0)) ) {
+          stateFE := sFEAlmostEmpty
+        }
+      }
+    }
+  }
 
 }
